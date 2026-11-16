@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIA2026 GAME CARTRIDGES</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  :root { --g0:#e8e8e8; --g1:#b8b8b8; --g2:#555555; --g3:#1a1a1a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "DotGothic16", monospace;
+    background: var(--g0); color: var(--g3);
+    min-height: 100vh;
+  }
+  header { text-align: center; padding: 40px 16px 24px; border-bottom: 4px solid var(--g3); background: var(--g1); }
+  header h1 { font-family: "Press Start 2P", monospace; font-size: clamp(1rem, 3.5vw, 1.8rem); line-height: 1.5; }
+  header p { margin-top: 12px; color: var(--g2); }
+  main {
+    max-width: 1100px; margin: 36px auto; padding: 0 20px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px;
+  }
+  .card {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--g0); border: 4px solid var(--g3); box-shadow: 4px 4px 0 var(--g2);
+  }
+  .card:hover { background: var(--g1); }
+  .card:hover .body h2::before { content: "▶ "; }
+  .thumb { aspect-ratio: 16/10; border-bottom: 4px solid var(--g3); overflow: hidden; background: var(--g3); }
+  .thumb img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .body { padding: 14px 16px 16px; }
+  .no { font-size: .8rem; color: var(--g2); }
+  .body h2 { font-size: 1.2rem; margin: 8px 0 6px; }
+  .body p { font-size: .9rem; line-height: 1.5; color: var(--g2); }
+  footer { text-align: center; padding: 28px; font-family: "Press Start 2P", monospace; font-size: .6rem; color: var(--g2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>SIA2026<br>GAME CARTRIDGES</h1>
+  <p>바이브코딩 미니게임 모음 · 7 GAMES</p>
+</header>
+
+<main id="list"></main>
+
+<footer>© 2026 SIA-D VIBECODINGS</footer>
+
+<script>
+const games = [
+  { team: "1조", dir: "w10_team01", file: "index.html", color: "#ff6b35", title: "Pizza Rush",
+    desc: "도우 → 소스 → 치즈 → 토핑! 손님 주문대로 피자를 만들어 오븐에 구워내는 요리 미니게임.", tag: "캐주얼 · 요리" },
+  { team: "2조", dir: "w10_team02", file: "index.html", color: "#5b6cff", title: "전쟁시대",
+    desc: "곤충에서 외계인까지 진화하며 적 기지를 부수는 『Age of War』 감성 횡스크롤 디펜스.", tag: "전략 · 디펜스" },
+  { team: "3조", dir: "w10_team03", file: "index.html", color: "#2bb3c0", title: "별빛 낚시",
+    desc: "호숫가에서 찌를 던지고 물고기를 낚아 낚싯대를 업그레이드! 도감 12종을 채워보세요.", tag: "픽셀아트 · 힐링" },
+  { team: "4조", dir: "w10_team04", file: "index.html", color: "#f2b500", title: "슈와 몽이: 별빛 수호대",
+    desc: "키보드 하나로 두 명이 함께! 별빛을 잃은 마을을 구하는 2인 협동 액션 RPG.", tag: "2인 협동 · RPG" },
+  { team: "5조", dir: "w10_team05", file: "START_GAME.html", color: "#8a5a9e", pos: "center bottom", title: "다 모였네",
+    desc: "사라진 가족, 버려진 집, 그리고 도착한 편지 한 통. \"이제 너만 남았어.\" (공포 연출 주의)", tag: "호러 · 스토리" },
+  { team: "6조", dir: "w10_team06", file: "index.html", color: "#e04848", title: "Prison Break 3D",
+    desc: "교도관의 시야를 피해 지하 감방에서 지상까지 탈출하는 1인칭 3D 잠행 게임.", tag: "1인칭 · 잠입" },
+  { team: "7조", dir: "w10_team07", file: "index.html", color: "#3fae5a", title: "몬스터 배틀 아레나",
+    desc: "6종의 몬스터를 모으고 타입 상성을 활용해 6개 스테이지를 돌파하는 턴제 배틀.", tag: "턴제 · 배틀" },
+];
+document.getElementById("list").innerHTML = games.map((g, i) => `
+  <a class="card" href="projects/${g.dir}/${g.file}">
+    <div class="thumb"><img src="screenshots/${g.dir}.png" style="object-position:${g.pos || 'center'}" alt="${g.title}" loading="lazy"></div>
+    <div class="body">
+      <span class="no">No.0${i + 1} · ${g.team} · ${g.tag}</span>
+      <h2>${g.title}</h2>
+      <p>${g.desc}</p>
+    </div>
+  </a>`).join("");
+</script>
+</body>
+</html>
