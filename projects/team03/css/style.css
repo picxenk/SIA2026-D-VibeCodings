@@ -1,0 +1,80 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #1b2730;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Galmuri11", "DungGeunMo", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* 은은한 바깥 조명 */
+#wrap::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(ellipse at 50% 40%, #3a5260 0%, #1b2730 60%, #121a20 100%);
+  z-index: 0;
+}
+
+canvas {
+  position: relative;
+  z-index: 1;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  cursor: pointer;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 3px #2c3c46,
+    0 0 0 6px #131d24,
+    0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+#rotate-hint {
+  display: none;
+  position: absolute;
+  bottom: 8%;
+  z-index: 2;
+  margin: 0;
+  padding: 8px 14px;
+  color: #f7e9c9;
+  font-size: 12px;
+  background: rgba(30, 42, 48, 0.85);
+  border: 2px solid #5b3a29;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: fadePulse 2.4s ease-in-out infinite;
+}
+
+@keyframes fadePulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (orientation: portrait) and (max-width: 620px) {
+  #rotate-hint {
+    display: block;
+  }
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>슈와 몽이: 별빛 수호대</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="frame">
+    <div class="canvas-wrap">
+      <canvas id="game" width="480" height="272" tabindex="0" aria-label="슈와 몽이 별빛 수호대 게임 화면"></canvas>
+    </div>
+    <p class="controls">
+      <span>슈: ← → 이동 · ↑ 점프 · 오른쪽 Shift 공격</span>
+      <span>몽이: A D 이동 · W 점프(2단·활공) · 왼쪽 Shift 공격</span>
+      <span>Esc 일시정지</span>
+    </p>
+  </main>
+
+  <script src="src/levels.js?v=6"></script>
+  <script src="src/input.js?v=6"></script>
+  <script src="src/audio.js?v=6"></script>
+  <script src="src/game.js?v=6"></script>
+  <script src="src/main.js?v=6"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>전쟁시대 — 미니게임 MVP</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <div id="topbar">
+      <div class="hud-gold">💰 <b id="goldText">300</b></div>
+      <div class="hud-age" id="ageText">선사시대</div>
+      <div class="hud-time" id="timeText">00:00</div>
+      <div class="hud-bars">
+        <div class="barrow"><span>적 기지</span><div class="bar"><i id="enemyHpBar" class="enemy"></i></div></div>
+        <div class="barrow"><span>내 기지</span><div class="bar"><i id="playerHpBar"></i></div></div>
+      </div>
+      <button id="soundBtn" title="소리 켜기/끄기">🔊</button>
+    </div>
+
+    <div id="bottombar">
+      <div id="unitButtons"></div>
+      <div class="grow"></div>
+      <button id="turretBtn" class="action">터렛</button>
+      <button id="specialBtn" class="action special">스킬</button>
+      <button id="evolveBtn" class="action evolve">진화</button>
+    </div>
+
+    <div id="overlay"></div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="game.js"></script>
+  <script src="ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b2730" />
+  <meta name="description" content="Stardew Valley 감성의 아주 작은 2D 낚시 게임 — 별빛 낚시" />
+  <title>별빛 낚시 · Starlight Fishing</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎣</text></svg>" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main id="wrap">
+    <canvas id="game" width="480" height="270" aria-label="별빛 낚시 게임 화면"></canvas>
+    <p id="rotate-hint">화면을 돌리면 더 넓게 즐길 수 있어요 🎣</p>
+  </main>
+
+  <!-- 로드 순서 중요 (클래식 스크립트 = 빌드 불필요) -->
+  <script src="js/config.js" defer></script>
+  <script src="js/utils.js" defer></script>
+  <script src="js/fish.js" defer></script>
+  <script src="js/rods.js" defer></script>
+  <script src="js/themes.js" defer></script>
+  <script src="js/input.js" defer></script>
+  <script src="js/audio.js" defer></script>
+  <script src="js/save.js" defer></script>
+  <script src="js/background.js" defer></script>
+  <script src="js/minigame.js" defer></script>
+  <script src="js/scene-title.js" defer></script>
+  <script src="js/scene-fishing.js" defer></script>
+  <script src="js/scene-result.js" defer></script>
+  <script src="js/scene-collection.js" defer></script>
+  <script src="js/scene-shop.js" defer></script>
+  <script src="js/game.js" defer></script>
+  <script src="js/main.js" defer></script>
+</body>
+</html>

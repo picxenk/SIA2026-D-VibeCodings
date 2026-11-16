@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISON BREAK 3D — MOUSE ESCAPE</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #07090d;
+    color: #c9d1e0;
+    font-family: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    overflow: hidden;
+    user-select: none;
+  }
+  #game {
+    width: min(96vw, 1150px);
+    height: auto;
+    aspect-ratio: 960 / 560;
+    background: #0b0d12;
+    border: 1px solid #262c38;
+    border-radius: 6px;
+    cursor: crosshair;
+    display: block;
+    box-shadow: 0 10px 40px rgba(0,0,0,.6);
+  }
+  #note {
+    font-size: 12px;
+    color: #5b6478;
+    letter-spacing: .02em;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="960" height="560"></canvas>
+<div id="note">마우스 좌우 = 회전 · 위/아래 = 전진/후진 (WASD 가능) · R 재시작 · ESC 일시정지</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   상수 / 유틸
+   ========================================================= */
+const cv = document.getElementById("game");
+const ctx = cv.getContext("2d");
+const W = cv.width;
+const H = cv.height;
+
+const TILE = 64;                 // 1타일 = 64px
+const FOV = Math.PI / 3;          // 수평 시야각 60도
+const PROJ = W / 2 / Math.tan(FOV / 2);
+const CAM_H = 0.5;                // 카메라 높이(타일)
+const PLAYER_R = 0.28;            // 플레이어 반지름(타일)
+const MOVE_SPEED = 3.1;           // 타일/초
+const TURN_SPEED = 2.6;           // 라디안/초
+const DETECT_RATE = 260;          // 시야에 보일 때 의심도 상승(/sec)
+const DETECT_RATE_CLOSE = 520;
+const SUSPICION_DECAY = 45;
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* =========================================================
+   층(스테이지) 데이터
+   # 벽  . 바닥  S 계단(다음 층)  X 탈출구
+   ========================================================= */
+const FLOORS = [
+  {
+    name: "B3 · 감방",
+    map: [
+      "####################",
+      "#..................#",
+      "#..................#",
+      "#..................#",
+      "#.......####.......#",
+      "#.......#..#.......#",
+      "#.......#..#.......#",
+      "#.......####.......#",
+      "#..................#",
+      "#..................#",
+      "#.........S........#",
+      "#..................#",
+      "#..................#",
+      "####################",
+    ],
+    start: [2, 12],
+    angle: 0,
+    guards: [{ path: [[5, 2], [14, 2]], speed: 1.4, viewDist: 8, viewAngle: 1.15 }],
+    lights: [],
+    gates: [],
+    shocks: [],
+    traps: [],
+    hint: "마우스를 좌우로 돌려 회전, 위로 밀어 전진합니다. 계단(S)을 찾으세요.",
+  },
+  {
+    name: "B2 · 복도",
+    map: [
+      "####################",
+      "#.........#........#",
+      "#.........#........#",
+      "#.........#........#",
+      "#.........#........#",
+      "#.........#........#",
+      "#.........B........#",
+      "#.........#........#",
+      "#.........#....S...#",
+      "#.........#........#",
+      "#.........#........#",
+      "#.........#........#",
+      "#.........#........#",
+      "####################",
+    ],
+    start: [2, 12],
+    angle: 0,
+    guards: [
+      { path: [[3, 3], [8, 3]], speed: 1.5, viewDist: 7, viewAngle: 1.1 },
+      { path: [[12, 5], [17, 5]], speed: 1.6, viewDist: 7, viewAngle: 1.1 },
+    ],
+    lights: [],
+    gates: [{ cx: 10, cy: 6, period: 3.2, duty: 0.5, phase: 0 }],
+    shocks: [],
+    traps: [],
+    hint: "쇠창살이 주기적으로 열립니다. 열린 틈으로 지나가세요.",
+  },
+  {
+    name: "B1 · 식당",
+    map: [
+      "####################",
+      "#..................#",
+      "#..................#",
+      "#..####...####.....#",
+      "#..#..........#....#",
+      "#..#..........#....#",
+      "#..................#",
+      "#..................#",
+      "#.....####.........#",
+      "#.....#..#.........#",
+      "#.....#..#.........#",
+      "#..................#",
+      "#.........S........#",
+      "####################",
+    ],
+    start: [2, 12],
+    angle: 0,
+    guards: [
+      { path: [[4, 6], [12, 6]], speed: 1.6, viewDist: 7, viewAngle: 1.2 },
+      { path: [[16, 9], [16, 2]], speed: 1.5, viewDist: 7, viewAngle: 1.2 },
+    ],
+    lights: [],
+    gates: [],
+    shocks: [
+      { x: 7, y: 6, w: 2, h: 2, period: 2.6, duty: 0.45, phase: 0 },
+      { x: 14, y: 3, w: 2, h: 3, period: 2.2, duty: 0.4, phase: 0.5 },
+    ],
+    traps: [{ x: 5, y: 8 }, { x: 16, y: 9 }, { x: 11, y: 6 }],
+    hint: "전기 장치가 켜지면 감전, 바닥의 덫은 항상 위험합니다.",
+  },
+  {
+    name: "1F · 운동장",
+    map: [
+      "####################",
+      "#..................#",
+      "#..#.....#.....#...#",
+      "#..#.....#.....#...#",
+      "#..................#",
+      "#..................#",
+      "#....#########.....#",
+      "#..................#",
+      "#..................#",
+      "#..#.....#.....#...#",
+      "#..#.....#.....#...#",
+      "#..................#",
+      "#............S.....#",
+      "####################",
+    ],
+    start: [2, 12],
+    angle: 0,
+    guards: [{ path: [[4, 4], [16, 4]], speed: 1.7, viewDist: 7, viewAngle: 1.1 }],
+    lights: [{ x: 10, y: 5, rotSpeed: 0.7, viewDist: 10, viewAngle: 0.5 }],
+    gates: [],
+    shocks: [
+      { x: 6, y: 8, w: 3, h: 1, period: 2.4, duty: 0.45, phase: 0.2 },
+      { x: 13, y: 4, w: 2, h: 2, period: 2.8, duty: 0.4, phase: 0.6 },
+    ],
+    traps: [{ x: 9, y: 9 }, { x: 15, y: 8 }, { x: 4, y: 8 }, { x: 12, y: 11 }],
+    hint: "회전하는 조명과 전기 장치를 피해 계단으로.",
+  },
+  {
+    name: "지상 · 담장",
+    map: [
+      "####################",
+      "#..................#",
+      "#..##B....####.....#",
+      "#..#..........#....#",
+      "#..#..........#....#",
+      "#..................#",
+      "#..................#",
+      "#....####.####.....#",
+      "#....#.............#",
+      "#....#.............#",
+      "#..................#",
+      "#..................#",
+      "#..............X...#",
+      "####################",
+    ],
+    start: [2, 12],
+    angle: 0,
+    guards: [
+      { path: [[7, 3], [15, 3]], speed: 1.8, viewDist: 8, viewAngle: 1.2 },
+      { path: [[7, 10], [16, 10]], speed: 1.7, viewDist: 8, viewAngle: 1.2 },
+      { path: [[17, 5], [17, 11]], speed: 1.6, viewDist: 8, viewAngle: 1.2 },
+    ],
+    lights: [],
+    gates: [{ cx: 5, cy: 2, period: 2.8, duty: 0.5, phase: 0 }],
+    shocks: [
+      { x: 8, y: 5, w: 2, h: 2, period: 2.2, duty: 0.4, phase: 0.3 },
+      { x: 11, y: 11, w: 3, h: 1, period: 2.6, duty: 0.45, phase: 0.7 },
+    ],
+    traps: [{ x: 3, y: 6 }, { x: 10, y: 9 }, { x: 15, y: 6 }, { x: 5, y: 11 }],
+    timeLimit: 60,
+    hint: "60초 안에 탈출구(X)로! 모든 장치가 작동합니다.",
+  },
+];
+
+/* =========================================================
+   상태
+   ========================================================= */
+const game = {
+  state: "title", // title | playing | paused | fail | end
+  floorIndex: 0,
+  floor: null,
+  player: null,
+  suspicion: 0,
+  time: 0,
+  failMsg: "",
+  transition: null, // { t, dur, to }
+  toast: "",
+  toastTime: 0,
+  clock: 0,
+};
+
+const keys = {};
+const joy = { x: 0, y: 0 }; // 가상 조이스틱(마우스 상대 이동량)
+
+/* =========================================================
+   입력
+   ========================================================= */
+let pointerLocked = false;
+let wasLocked = false;
+let skipNextMove = true;
+
+document.addEventListener("pointerlockchange", () => {
+  pointerLocked = document.pointerLockElement === cv;
+  if (!wasLocked && pointerLocked) skipNextMove = true;
+  if (wasLocked && !pointerLocked && game.state === "playing") game.state = "paused";
+  wasLocked = pointerLocked;
+});
+
+function requestPointerLock() {
+  if (document.pointerLockElement === cv) return;
+  try {
+    const req = cv.requestPointerLock();
+    if (req && typeof req.catch === "function") req.catch(() => {});
+  } catch (_) {}
+}
+
+cv.addEventListener("mousemove", (e) => {
+  if (game.state !== "playing") return;
+  if (skipNextMove) {
+    skipNextMove = false;
+    return;
+  }
+  joy.x = clamp(joy.x + e.movementX * 0.0042, -1, 1);
+  joy.y = clamp(joy.y + e.movementY * 0.0042, -1, 1);
+});
+
+cv.addEventListener("mousedown", (e) => {
+  if (e.button === 0 && game.state === "playing" && !pointerLocked) requestPointerLock();
+});
+
+cv.addEventListener("click", () => {
+  if (game.state === "title") loadFloor(0);
+  else if (game.state === "paused") {
+    game.state = "playing";
+    skipNextMove = true;
+    requestPointerLock();
+  } else if (game.state === "fail") loadFloor(game.floorIndex);
+  else if (game.state === "end") game.state = "title";
+});
+
+window.addEventListener("keydown", (e) => {
+  const k = e.key.toLowerCase();
+  keys[k] = true;
+  if (k === "r" && ["playing", "paused", "fail"].includes(game.state)) loadFloor(game.floorIndex);
+  if (e.key === "Escape") {
+    if (game.state === "playing" && !pointerLocked) game.state = "paused";
+    else if (game.state === "paused") {
+      game.state = "playing";
+      skipNextMove = true;
+      requestPointerLock();
+    }
+  }
+});
+window.addEventListener("keyup", (e) => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+/* =========================================================
+   맵 유틸
+   ========================================================= */
+function cellChar(floor, cx, cy) {
+  const row = floor.map[cy];
+  if (!row) return "#";
+  return row[cx] || "#";
+}
+
+function gateAt(floor, cx, cy) {
+  for (const g of floor.gates) if (g.cx === cx && g.cy === cy) return g;
+  return null;
+}
+
+function isOn(clock, device) {
+  return (clock / device.period + (device.phase || 0)) % 1 < device.duty;
+}
+
+function cellBlocked(floor, cx, cy) {
+  const ch = cellChar(floor, cx, cy);
+  if (ch === "#") return true;
+  const g = gateAt(floor, cx, cy);
+  if (g) return isOn(floor.clock, g);
+  return false;
+}
+
+function canStand(floor, x, y) {
+  const r = PLAYER_R;
+  const pts = [
+    [x - r, y - r],
+    [x + r, y - r],
+    [x - r, y + r],
+    [x + r, y + r],
+  ];
+  for (const [px, py] of pts) {
+    if (cellBlocked(floor, Math.floor(px), Math.floor(py))) return false;
+  }
+  return true;
+}
+
+/* =========================================================
+   층 로딩
+   ========================================================= */
+function loadFloor(i) {
+  game.floorIndex = i;
+  const def = FLOORS[i];
+  const floor = {
+    def,
+    map: def.map,
+    clock: 0,
+    timeLeft: def.timeLimit || null,
+    guards: def.guards.map((g) => ({
+      x: g.path[0][0] + 0.5,
+      y: g.path[0][1] + 0.5,
+      path: g.path.map((p) => [p[0] + 0.5, p[1] + 0.5]),
+      idx: 1,
+      angle: 0,
+      speed: g.speed,
+      viewDist: g.viewDist,
+      viewAngle: g.viewAngle,
+      seen: false,
+      wait: 0,
+    })),
+    lights: def.lights.map((l) => ({
+      x: l.x + 0.5,
+      y: l.y + 0.5,
+      angle: 0,
+      rotSpeed: l.rotSpeed,
+      viewDist: l.viewDist,
+      viewAngle: l.viewAngle,
+      seen: false,
+    })),
+    gates: def.gates.map((g) => ({ ...g, period: g.period || 3, duty: g.duty ?? 0.5, phase: g.phase || 0 })),
+    shocks: def.shocks.map((s) => ({ ...s, period: s.period || 2.4, duty: s.duty ?? 0.4, phase: s.phase || 0 })),
+    traps: def.traps.map((t) => ({ ...t })),
+    hint: def.hint || "",
+  };
+  game.floor = floor;
+  game.player = {
+    x: def.start[0] + 0.5,
+    y: def.start[1] + 0.5,
+    angle: def.angle || 0,
+  };
+  game.suspicion = 0;
+  game.transition = null;
+  game.state = "playing";
+  joy.x = 0;
+  joy.y = 0;
+  skipNextMove = true;
+  requestPointerLock();
+}
+
+/* =========================================================
+   시야 판정
+   ========================================================= */
+function losClear(floor, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.ceil(dist * 8);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const cx = Math.floor(x1 + dx * t);
+    const cy = Math.floor(y1 + dy * t);
+    if (cellChar(floor, cx, cy) === "#") return false;
+  }
+  return true;
+}
+
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+/* =========================================================
+   렌더 준비 (카메라)
+   ========================================================= */
+const cam = {
+  px: 0,
+  py: 0,
+  dirX: 1,
+  dirY: 0,
+  planeX: 0,
+  planeY: 0.7,
+};
+
+function updateCamera() {
+  if (!game.player) return;
+  cam.px = game.player.x;
+  cam.py = game.player.y;
+  cam.dirX = Math.cos(game.player.angle);
+  cam.dirY = Math.sin(game.player.angle);
+  const planeScale = Math.tan(FOV / 2);
+  cam.planeX = -cam.dirY * planeScale;
+  cam.planeY = cam.dirX * planeScale;
+}
+
+function project(wx, wy) {
+  const rx = wx - cam.px;
+  const ry = wy - cam.py;
+  const invDet = 1 / (cam.planeX * cam.dirY - cam.dirX * cam.planeY);
+  const tX = invDet * (cam.dirY * rx - cam.dirX * ry);
+  const tY = invDet * (-cam.planeY * rx + cam.planeX * ry);
+  if (tY < 0.03) return null;
+  return {
+    x: (W / 2) * (1 + tX / tY),
+    y: H / 2 + (CAM_H * PROJ) / tY,
+    depth: tY,
+  };
+}
+
+/* =========================================================
+   레이캐스팅
+   ========================================================= */
+const zbuf = new Float32Array(W);
+
+function castRay(rayDirX, rayDirY) {
+  let mapX = Math.floor(cam.px);
+  let mapY = Math.floor(cam.py);
+  const deltaDistX = Math.abs(1 / rayDirX) || 1e30;
+  const deltaDistY = Math.abs(1 / rayDirY) || 1e30;
+
+  let stepX, stepY, sideDistX, sideDistY;
+  if (rayDirX < 0) {
+    stepX = -1;
+    sideDistX = (cam.px - mapX) * deltaDistX;
+  } else {
+    stepX = 1;
+    sideDistX = (mapX + 1 - cam.px) * deltaDistX;
+  }
+  if (rayDirY < 0) {
+    stepY = -1;
+    sideDistY = (cam.py - mapY) * deltaDistY;
+  } else {
+    stepY = 1;
+    sideDistY = (mapY + 1 - cam.py) * deltaDistY;
+  }
+
+  let side = 0;
+  let guard = 0;
+  while (guard++ < 96) {
+    if (sideDistX < sideDistY) {
+      sideDistX += deltaDistX;
+      mapX += stepX;
+      side = 0;
+    } else {
+      sideDistY += deltaDistY;
+      mapY += stepY;
+      side = 1;
+    }
+    if (cellBlocked(game.floor, mapX, mapY)) {
+      // 수직 벽(side 0)은 sideDistX, 수평 벽(side 1)은 sideDistY 를 사용
+      const perp = side === 0 ? sideDistX - deltaDistX : sideDistY - deltaDistY;
+      const hx = cam.px + rayDirX * perp;
+      const hy = cam.py + rayDirY * perp;
+      return {
+        dist: Math.hypot(hx - cam.px, hy - cam.py),
+        side,
+        mapX,
+        mapY,
+        hx,
+        hy,
+        gate: gateAt(game.floor, mapX, mapY),
+      };
+    }
+  }
+  return { dist: 40, side: 0, mapX: 0, mapY: 0, hx: 0, hy: 0, gate: null };
+}
+
+/* =========================================================
+   스프라이트 (교도관)
+   ========================================================= */
+function makeGuardSprite(alert) {
+  const s = document.createElement("canvas");
+  s.width = 64;
+  s.height = 96;
+  const c = s.getContext("2d");
+
+  // 그림자
+  c.fillStyle = "rgba(0,0,0,0.35)";
+  c.beginPath();
+  c.ellipse(32, 92, 22, 6, 0, 0, Math.PI * 2);
+  c.fill();
+
+  // 제복 몸통
+  c.fillStyle = alert ? "#5570b3" : "#44639f";
+  c.fillRect(12, 34, 40, 56);
+  c.strokeStyle = alert ? "#fb7185" : "#26344f";
+  c.lineWidth = 3;
+  c.strokeRect(12, 34, 40, 56);
+
+  // 배지
+  c.fillStyle = "#facc15";
+  c.beginPath();
+  c.arc(21, 52, 4, 0, Math.PI * 2);
+  c.fill();
+
+  // 벨트
+  c.fillStyle = "#1b2230";
+  c.fillRect(12, 68, 40, 5);
+
+  // 어깨
+  c.fillStyle = alert ? "#5570b3" : "#44639f";
+  c.fillRect(6, 44, 8, 26);
+  c.fillRect(50, 44, 8, 26);
+
+  // 머리
+  c.fillStyle = "#e8b98f";
+  c.beginPath();
+  c.arc(32, 24, 13, 0, Math.PI * 2);
+  c.fill();
+
+  // 정모
+  c.fillStyle = "#17233a";
+  c.beginPath();
+  c.arc(32, 20, 13, Math.PI, Math.PI * 2);
+  c.fill();
+  c.fillRect(19, 18, 26, 5);
+
+  // 눈
+  c.fillStyle = "#0b0d12";
+  c.fillRect(26, 24, 3, 3);
+  c.fillRect(35, 24, 3, 3);
+
+  return s;
+}
+
+const GUARD_SPRITE = makeGuardSprite(false);
+const GUARD_SPRITE_ALERT = makeGuardSprite(true);
+
+/* =========================================================
+   렌더링
+   ========================================================= */
+function wallShade(base, mult) {
+  const r = clamp(Math.round(base[0] * mult), 0, 255);
+  const g = clamp(Math.round(base[1] * mult), 0, 255);
+  const b = clamp(Math.round(base[2] * mult), 0, 255);
+  return `rgb(${r},${g},${b})`;
+}
+
+function render() {
+  const floor = game.floor;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#0d1017");
+  g.addColorStop(0.5, "#1b2029");
+  g.addColorStop(1, "#10131a");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  if (!floor) return;
+
+  drawFloorTiles(floor);
+  drawCones(floor);
+  drawShocks(floor);
+  drawWalls(floor);
+  drawSprites(floor);
+  drawTraps(floor);
+  drawHand();
+  drawHUD(floor);
+}
+
+function drawFloorTiles(floor) {
+  for (let cy = 0; cy < floor.map.length; cy++) {
+    for (let cx = 0; cx < floor.map[cy].length; cx++) {
+      const p0 = project(cx, cy);
+      const p1 = project(cx + 1, cy);
+      const p2 = project(cx + 1, cy + 1);
+      const p3 = project(cx, cy + 1);
+      if (!p0 || !p1 || !p2 || !p3) continue;
+
+      const depth = (p0.depth + p1.depth + p2.depth + p3.depth) / 4;
+      const light = clamp(1 - depth / 30, 0.18, 1);
+      const base = (cx + cy) % 2 === 0 ? [44, 50, 62] : [36, 41, 52];
+      ctx.fillStyle = wallShade(base, light);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.closePath();
+      ctx.fill();
+
+      // 계단 / 탈출구 표시
+      const ch = cellChar(floor, cx, cy);
+      if (ch === "S" || ch === "X") {
+        const pulse = 0.5 + 0.5 * Math.sin(floor.clock * 4);
+        ctx.fillStyle = `rgba(110,231,183,${0.25 + pulse * 0.3})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(167,243,208,${0.45 + pulse * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawCones(floor) {
+  const watchers = [...floor.guards, ...floor.lights];
+  for (const w of watchers) {
+    const half = w.viewAngle / 2;
+    const left = project(
+      w.x + Math.cos(w.angle - half) * w.viewDist,
+      w.y + Math.sin(w.angle - half) * w.viewDist
+    );
+    const right = project(
+      w.x + Math.cos(w.angle + half) * w.viewDist,
+      w.y + Math.sin(w.angle + half) * w.viewDist
+    );
+    const base = project(w.x, w.y);
+    if (!left || !right || !base) continue;
+
+    ctx.fillStyle = w.seen ? "rgba(248,113,113,0.22)" : "rgba(251,191,36,0.12)";
+    ctx.beginPath();
+    ctx.moveTo(base.x, base.y);
+    ctx.lineTo(left.x, left.y);
+    ctx.lineTo(right.x, right.y);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawShocks(floor) {
+  for (const s of floor.shocks) {
+    const x0 = s.x;
+    const y0 = s.y;
+    const x1 = s.x + s.w;
+    const y1 = s.y + s.h;
+    const a = project(x0, y0);
+    const b = project(x1, y0);
+    const c = project(x1, y1);
+    const d = project(x0, y1);
+    if (!a || !b || !c || !d) continue;
+
+    const t = (floor.clock / s.period + (s.phase || 0)) % 1;
+    const warn = !isOn(floor.clock, s) && t > s.duty - 0.12 && t < s.duty;
+
+    ctx.fillStyle = isOn(floor.clock, s)
+      ? "rgba(56,189,248,0.55)"
+      : warn
+      ? "rgba(56,189,248,0.28)"
+      : "rgba(56,189,248,0.13)";
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.lineTo(c.x, c.y);
+    ctx.lineTo(d.x, d.y);
+    ctx.closePath();
+    ctx.fill();
+
+    if (isOn(floor.clock, s)) {
+      ctx.strokeStyle = "rgba(224,242,254,0.9)";
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) {
+        const u = (i + 1) / 4;
+        const p1 = { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+        const p2 = { x: d.x + (c.x - d.x) * u, y: d.y + (c.y - d.y) * u };
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function drawWalls(floor) {
+  for (let x = 0; x < W; x++) {
+    const cameraX = (2 * x) / W - 1;
+    const rayDirX = cam.dirX + cam.planeX * cameraX;
+    const rayDirY = cam.dirY + cam.planeY * cameraX;
+    const hit = castRay(rayDirX, rayDirY);
+    zbuf[x] = hit.dist;
+
+    const lineH = PROJ / hit.dist;
+    const yBot = H / 2 + CAM_H * lineH;
+    const yTop = H / 2 - (1 - CAM_H) * lineH;
+
+    const u = hit.side === 0 ? hit.hy : hit.hx;
+    const brickRow = Math.floor((hit.side === 0 ? hit.hx : hit.hy) * 3);
+    const mortar = (u * 3 - Math.floor(u * 3)) < 0.08 || brickRow % 3 === 0 ? 0.72 : 1;
+    const sideMul = hit.side === 1 ? 0.8 : 1;
+    const distMul = clamp(1 - hit.dist / 32, 0.26, 1);
+
+    if (hit.gate) {
+      // 쇠창살: 세로 줄무늬
+      const bar = Math.floor(u * 9) % 2 === 0;
+      const base = bar ? [158, 168, 188] : [40, 46, 58];
+      ctx.fillStyle = wallShade(base, mortar * sideMul * distMul);
+    } else {
+      const base = [96, 106, 126];
+      ctx.fillStyle = wallShade(base, mortar * sideMul * distMul);
+    }
+    ctx.fillRect(x, yTop, 1, yBot - yTop);
+  }
+}
+
+function drawSprites(floor) {
+  for (const gd of floor.guards) {
+    const img = gd.seen ? GUARD_SPRITE_ALERT : GUARD_SPRITE;
+    drawBillboard(img, gd.x, gd.y, 0.95);
+  }
+}
+
+function drawBillboard(img, wx, wy, height) {
+  const p = project(wx, wy);
+  if (!p) return;
+  const h = (height * PROJ) / p.depth;
+  const w = h * (img.width / img.height);
+  const x0 = p.x - w / 2;
+  const yBot = H / 2 + (CAM_H * PROJ) / p.depth;
+  const yTop = yBot - h;
+
+  const xStart = Math.max(0, Math.floor(x0));
+  const xEnd = Math.min(W - 1, Math.ceil(x0 + w));
+  if (xEnd <= xStart || h < 2) return;
+
+  for (let x = xStart; x <= xEnd; x++) {
+    if (zbuf[x] <= p.depth) continue;
+    const u = (x - x0) / w;
+    ctx.drawImage(
+      img,
+      u * img.width,
+      0,
+      img.width / w,
+      img.height,
+      x,
+      yTop,
+      1,
+      h
+    );
+  }
+}
+
+function drawTraps(floor) {
+  for (const t of floor.traps) {
+    const p = project(t.x + 0.5, t.y + 0.5);
+    if (!p) continue;
+    const r = (0.3 * PROJ) / p.depth;
+    if (r < 2) continue;
+    const yOff = (0.02 * PROJ) / p.depth;
+
+    // 벽에 가려져 있으면 그리지 않음
+    let hidden = true;
+    for (let s = -1; s <= 1; s++) {
+      const cx = Math.round(p.x + s * r * 0.7);
+      if (cx < 0 || cx >= W) continue;
+      if (zbuf[cx] > p.depth) hidden = false;
+    }
+    if (hidden) continue;
+
+    ctx.save();
+    ctx.translate(p.x, p.y + yOff);
+    ctx.fillStyle = "#2a2f3b";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * 0.38, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8b95a8";
+    ctx.lineWidth = Math.max(1, r * 0.08);
+    ctx.stroke();
+    ctx.fillStyle = "#c9d1e0";
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI * 2 * i) / 8;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a - 0.2) * r * 0.9, Math.sin(a - 0.2) * r * 0.34);
+      ctx.lineTo(Math.cos(a + 0.2) * r * 0.9, Math.sin(a + 0.2) * r * 0.34);
+      ctx.lineTo(Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.16);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "#f87171";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * 0.26, r * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// 1인칭 도둑의 손
+function drawHand() {
+  ctx.save();
+  ctx.translate(W * 0.72, H + 6);
+  ctx.rotate(-0.18);
+  ctx.fillStyle = "#2f394d";
+  ctx.beginPath();
+  ctx.ellipse(0, -46, 34, 52, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#8b95a8";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // 손수건
+  ctx.fillStyle = "#e8edf5";
+  ctx.fillRect(-30, -22, 60, 13);
+  ctx.fillStyle = "#2f394d";
+  for (let i = 0; i < 4; i++) ctx.fillRect(-26 + i * 15, -20, 7, 9);
+  ctx.restore();
+}
+
+/* =========================================================
+   HUD / 오버레이
+   ========================================================= */
+function drawHUD(floor) {
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = "#e7ecf5";
+  ctx.font = "700 16px system-ui, sans-serif";
+  ctx.fillText(floor.def.name, 24, 34);
+
+  // 층 진행 표시
+  ctx.font = "600 12px system-ui, sans-serif";
+  ctx.fillStyle = "#5b6478";
+  ctx.fillText("B3 → B2 → B1 → 1F → 지상", 24, 54);
+
+  // 의심도
+  const bx = W - 220;
+  const by = 20;
+  ctx.fillStyle = "#2f3646";
+  ctx.fillRect(bx, by, 180, 12);
+  const v = game.suspicion / 100;
+  ctx.fillStyle = v > 0.7 ? "#f87171" : v > 0.35 ? "#fbbf24" : "#6ee7b7";
+  ctx.fillRect(bx, by, 180 * v, 12);
+  ctx.strokeStyle = "#4b5568";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by + 0.5, 179, 11);
+  ctx.fillStyle = "#8b95a8";
+  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.fillText("의심도", bx, by - 5);
+
+  if (floor.timeLeft !== null) {
+    ctx.textAlign = "right";
+    ctx.fillStyle = floor.timeLeft < 10 ? "#f87171" : "#c9d1e0";
+    ctx.font = "700 18px system-ui, sans-serif";
+    ctx.fillText(`${Math.ceil(floor.timeLeft)}s`, W - 24, 34);
+    ctx.textAlign = "left";
+  }
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#7c869c";
+  ctx.font = "500 13px system-ui, sans-serif";
+  ctx.fillText(floor.hint, W / 2, H - 14);
+  ctx.textAlign = "left";
+}
+
+function overlay(title, lines, titleColor = "#e7ecf5", alpha = 0.78) {
+  ctx.fillStyle = `rgba(7,9,13,${alpha})`;
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = titleColor;
+  ctx.font = "800 42px system-ui, sans-serif";
+  ctx.fillText(title, W / 2, H / 2 - 44);
+  ctx.font = "500 16px system-ui, sans-serif";
+  ctx.fillStyle = "#9aa4b8";
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, H / 2 + 18 + i * 26));
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+}
+
+function drawOverlays() {
+  if (game.state === "title") {
+    overlay(
+      "PRISON BREAK 3D",
+      [
+        "B3 감방에서 지상까지 5개 층을 내려가 탈출하세요.",
+        "마우스 좌우 = 회전 · 위/아래 = 전진/후진 (WASD도 가능)",
+        "",
+        "클릭하여 시작",
+      ],
+      "#6ee7b7"
+    );
+    return;
+  }
+  if (game.state === "paused") {
+    overlay("일시정지", ["클릭 또는 ESC 를 눌러 계속하세요."]);
+    return;
+  }
+  if (game.state === "fail") {
+    overlay("발각!", [game.failMsg, "", "클릭 또는 R : 이 층 다시하기"], "#f87171");
+    return;
+  }
+  if (game.state === "end") {
+    overlay("탈출 성공!", ["감옥 밖으로 무사히 빠져나왔다.", "", "클릭하면 타이틀로 돌아갑니다."], "#6ee7b7");
+    return;
+  }
+  if (game.transition) {
+    const t = game.transition.t / game.transition.dur;
+    const a = t < 0.5 ? t * 2 : (1 - t) * 2;
+    ctx.fillStyle = `rgba(7,9,13,${clamp(a, 0, 1)})`;
+    ctx.fillRect(0, 0, W, H);
+    if (t >= 0.35 && t <= 0.65) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#e7ecf5";
+      ctx.font = "800 34px system-ui, sans-serif";
+      ctx.fillText(game.toast, W / 2, H / 2);
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "left";
+    }
+  }
+}
+
+/* =========================================================
+   갱신
+   ========================================================= */
+function update(dt) {
+  if (game.state !== "playing") return;
+  const floor = game.floor;
+  const p = game.player;
+  floor.clock += dt;
+  game.clock += dt;
+
+  /* 입력 */
+  let turn = joy.x * TURN_SPEED;
+  let move = -joy.y * MOVE_SPEED;
+  if (keys["w"] || keys["arrowup"]) move = MOVE_SPEED;
+  if (keys["s"] || keys["arrowdown"]) move = -MOVE_SPEED;
+  if (keys["a"] || keys["arrowleft"]) turn -= TURN_SPEED;
+  if (keys["d"] || keys["arrowright"]) turn += TURN_SPEED;
+
+  // 키보드가 없으면 마우스 조이스틱이 중앙으로 복귀
+  if (!keys["w"] && !keys["s"] && !keys["arrowup"] && !keys["arrowdown"]) {
+    const decay = Math.exp(-dt * 3.2);
+    joy.x *= decay;
+    joy.y *= decay;
+    if (Math.abs(joy.x) < 0.001) joy.x = 0;
+    if (Math.abs(joy.y) < 0.001) joy.y = 0;
+  }
+
+  p.angle += turn * dt;
+
+  if (move !== 0) {
+    const nx = p.x + Math.cos(p.angle) * move * dt;
+    const ny = p.y + Math.sin(p.angle) * move * dt;
+    if (canStand(floor, nx, p.y)) p.x = nx;
+    if (canStand(floor, p.x, ny)) p.y = ny;
+  }
+
+  /* 교도관 */
+  for (const g of floor.guards) {
+    if (g.wait > 0) {
+      g.wait -= dt;
+      continue;
+    }
+    const [tx, ty] = g.path[g.idx];
+    const dx = tx - g.x;
+    const dy = ty - g.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 0.08) {
+      g.idx = (g.idx + 1) % g.path.length;
+      g.wait = 0.5;
+      continue;
+    }
+    g.x += (dx / d) * g.speed * dt;
+    g.y += (dy / d) * g.speed * dt;
+    g.angle = Math.atan2(dy, dx);
+  }
+  for (const l of floor.lights) l.angle += l.rotSpeed * dt;
+
+  /* 발각 판정 */
+  let seen = false;
+  let nearest = Infinity;
+  for (const w of [...floor.guards, ...floor.lights]) {
+    const dx = p.x - w.x;
+    const dy = p.y - w.y;
+    const dist = Math.hypot(dx, dy);
+    const ang = Math.atan2(dy, dx);
+    const sees =
+      dist < w.viewDist &&
+      Math.abs(angleDiff(ang, w.angle)) < w.viewAngle / 2 &&
+      losClear(floor, w.x, w.y, p.x, p.y);
+    w.seen = sees;
+    if (sees) {
+      seen = true;
+      nearest = Math.min(nearest, dist);
+    }
+  }
+
+  if (seen) {
+    game.suspicion += dt * (nearest < 2.2 ? DETECT_RATE_CLOSE : DETECT_RATE);
+  } else {
+    game.suspicion -= dt * SUSPICION_DECAY;
+  }
+  game.suspicion = clamp(game.suspicion, 0, 100);
+
+  if (game.suspicion >= 100) {
+    game.failMsg = "교도관에게 발각되었다!";
+    game.state = "fail";
+    return;
+  }
+
+  /* 덫 */
+  for (const t of floor.traps) {
+    if (Math.hypot(p.x - (t.x + 0.5), p.y - (t.y + 0.5)) < 0.42) {
+      game.failMsg = "덫에 걸렸다!";
+      game.state = "fail";
+      return;
+    }
+  }
+
+  /* 전기 장치 */
+  for (const s of floor.shocks) {
+    if (
+      isOn(floor.clock, s) &&
+      p.x > s.x &&
+      p.x < s.x + s.w &&
+      p.y > s.y &&
+      p.y < s.y + s.h
+    ) {
+      game.failMsg = "전기 충격 장치에 감전되었다!";
+      game.state = "fail";
+      return;
+    }
+  }
+
+  /* 제한 시간 */
+  if (floor.timeLeft !== null) {
+    floor.timeLeft -= dt;
+    if (floor.timeLeft <= 0) {
+      floor.timeLeft = 0;
+      game.failMsg = "시간 초과! 교도관들이 출동했다.";
+      game.state = "fail";
+      return;
+    }
+  }
+
+  /* 계단 / 탈출구 */
+  const cx = Math.floor(p.x);
+  const cy = Math.floor(p.y);
+  const ch = cellChar(floor, cx, cy);
+  if (ch === "S" || ch === "X") {
+    if (game.floorIndex + 1 >= FLOORS.length) {
+      game.state = "end";
+      return;
+    }
+    game.toast = `${FLOORS[game.floorIndex].name}  →  ${FLOORS[game.floorIndex + 1].name}`;
+    game.transition = { t: 0, dur: 1.1, to: game.floorIndex + 1 };
+  }
+}
+
+/* =========================================================
+   루프
+   ========================================================= */
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+
+  if (game.transition) {
+    game.transition.t += dt;
+    if (game.transition.t >= game.transition.dur * 0.5) {
+      const next = game.transition.to;
+      game.transition = null;
+      loadFloor(next);
+    }
+  }
+
+  update(dt);
+  updateCamera();
+  render();
+  drawOverlays();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
